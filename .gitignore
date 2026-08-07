@@ -1,0 +1,52 @@
+# Environnements virtuels
+.venv/
+venv/
+env/
+
+# Cache Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Pytest
+.pytest_cache/
+
+# Mypy / Ruff / autres caches
+.mypy_cache/
+.ruff_cache/
+
+# Streamlit
+.streamlit/
+
+# Fichiers IDE
+.vscode/
+.idea/
+
+# Fichiers système
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Sorties générées
+outputs/*
+!outputs/.gitkeep
+
+# Fichiers temporaires
+*.tmp
+*.temp
+~$*
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Packaging Python
+build/
+dist/
+*.egg-info/
+
+# Secrets / variables d'environnement
+.env
+.env.*
+!.env.example
