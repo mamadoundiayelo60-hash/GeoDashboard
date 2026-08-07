@@ -2,17 +2,18 @@ from __future__ import annotations
 
 import streamlit as st
 
-from components.attribute_table import (
-    render_attribute_table,
-)
+from components.attribute_table import render_attribute_table
 from components.header import render_header
 from components.import_panel import render_import_panel
 from components.layer_panel import render_layer_panel
 from components.map_panel import render_map_panel
+from components.selection_panel import render_selection_panel
 from components.stats_panel import render_stats_panel
 from components.theme import load_theme
 from components.toolbar import render_toolbar
+
 from services.layer_manager import LayerManager
+from services.selection_manager import SelectionManager
 
 
 # =========================================================
@@ -42,7 +43,7 @@ st.markdown(
 # =========================================================
 
 def get_layer_manager() -> LayerManager:
-    """Retourne le gestionnaire conservé dans la session."""
+    """Retourne le gestionnaire de couches conservé en session."""
 
     if "layer_manager" not in st.session_state:
         st.session_state.layer_manager = LayerManager()
@@ -50,7 +51,25 @@ def get_layer_manager() -> LayerManager:
     return st.session_state.layer_manager
 
 
+# =========================================================
+# GESTIONNAIRE DE SÉLECTION
+# =========================================================
+
+def get_selection_manager() -> SelectionManager:
+    """Retourne le gestionnaire de sélection conservé en session."""
+
+    if "selection_manager" not in st.session_state:
+        st.session_state.selection_manager = SelectionManager()
+
+    return st.session_state.selection_manager
+
+
+# =========================================================
+# INITIALISATION DES SERVICES
+# =========================================================
+
 manager = get_layer_manager()
+selection_manager = get_selection_manager()
 
 
 # =========================================================
@@ -93,10 +112,20 @@ with left_column:
 with right_column:
     render_map_panel(
         manager=manager,
+        selection_manager=selection_manager,
         commune=parameters["commune"],
         theme=parameters["theme"],
         distance=parameters["distance"],
     )
+
+
+# =========================================================
+# PANNEAU DE SÉLECTION
+# =========================================================
+
+render_selection_panel(
+    selection_manager
+)
 
 
 # =========================================================

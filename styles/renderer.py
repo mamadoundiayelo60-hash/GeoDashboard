@@ -7,24 +7,34 @@ import geopandas as gpd
 import pandas as pd
 
 from models.layer import Layer
+from models.selection import Selection
 
 
 def prepare_for_folium(
     gdf: gpd.GeoDataFrame,
 ) -> gpd.GeoDataFrame:
-    """Prépare une couche pour Leaflet/Folium."""
+    """
+    Prépare une couche pour Leaflet/Folium.
+
+    - reprojection en EPSG:4326
+    - suppression des géométries nulles
+    - conversion des dates en texte
+    """
 
     data = gdf.copy()
 
+    # Leaflet/Folium travaille en latitude / longitude.
     if data.crs is not None:
         data = data.to_crs("EPSG:4326")
 
+    # Supprimer les géométries nulles.
     data = data[
         data.geometry.notna()
     ].copy()
 
     geometry_column = data.geometry.name
 
+    # Rendre les attributs compatibles JSON.
     for column in data.columns:
 
         if column == geometry_column:
@@ -40,6 +50,7 @@ def prepare_for_folium(
             )
 
         elif data[column].dtype == "object":
+
             data[column] = data[column].apply(
                 lambda value: (
                     value.isoformat()
@@ -54,7 +65,10 @@ def prepare_for_folium(
 def choose_display_fields(
     gdf: gpd.GeoDataFrame,
 ) -> list[str]:
-    """Choisit des champs pertinents par défaut."""
+    """
+    Choisit automatiquement les champs les plus parlants
+    et ignore les champs techniques.
+    """
 
     columns = [
         column
@@ -62,7 +76,7 @@ def choose_display_fields(
         if column != gdf.geometry.name
     ]
 
-    preferred = [
+    preferred_fields = [
         "nom",
         "name",
         "libelle",
@@ -84,7 +98,7 @@ def choose_display_fields(
         "date_maj",
     ]
 
-    ignored = {
+    ignored_fields = {
         "fid",
         "gid",
         "id",
@@ -98,20 +112,29 @@ def choose_display_fields(
         "numdd",
         "numfg",
         "numfd",
+
+        # Champs techniques GeoDashboard
+        "__layer_name",
+        "__feature_index",
     }
 
     selected: list[str] = []
 
-    for wanted in preferred:
+    # Champs importants en priorité.
+    for preferred in preferred_fields:
+
         for column in columns:
+
             if (
-                column.lower() == wanted.lower()
+                column.lower() == preferred.lower()
                 and column not in selected
             ):
                 selected.append(column)
 
+    # Compléter avec d'autres champs non techniques.
     for column in columns:
-        if column.lower() in ignored:
+
+        if column.lower() in ignored_fields:
             continue
 
         if column not in selected:
@@ -127,21 +150,39 @@ def build_style(
     layer: Layer,
     geometry_type: str,
 ) -> dict:
-    """Construit le style Folium à partir du style de la couche."""
+    """
+    Construit le style Folium à partir
+    des paramètres de la couche.
+    """
 
     geometry_type = geometry_type.lower()
 
     style = {
-        "color": layer.style["color"],
-        "weight": layer.style["weight"],
-        "opacity": layer.style["opacity"],
+        "color": layer.style.get(
+            "color",
+            "#2563EB",
+        ),
+        "weight": layer.style.get(
+            "weight",
+            3,
+        ),
+        "opacity": layer.style.get(
+            "opacity",
+            0.85,
+        ),
     }
 
     if "polygon" in geometry_type:
-        style["fillColor"] = layer.style["color"]
-        style["fillOpacity"] = layer.style[
-            "fillOpacity"
-        ]
+
+        style["fillColor"] = layer.style.get(
+            "color",
+            "#2563EB",
+        )
+
+        style["fillOpacity"] = layer.style.get(
+            "fillOpacity",
+            0.20,
+        )
 
     return style
 
@@ -150,9 +191,11 @@ def build_popup(
     layer: Layer,
     gdf: gpd.GeoDataFrame,
 ):
-    """Crée la popup de la couche."""
+    """Construit la popup au clic."""
 
-    default_fields = choose_display_fields(gdf)
+    default_fields = choose_display_fields(
+        gdf
+    )
 
     fields = (
         layer.popup_fields
@@ -163,7 +206,10 @@ def build_popup(
     fields = [
         field
         for field in fields
-        if field in gdf.columns
+        if (
+            field in gdf.columns
+            and not field.startswith("__")
+        )
     ]
 
     if not fields:
@@ -185,9 +231,11 @@ def build_tooltip(
     layer: Layer,
     gdf: gpd.GeoDataFrame,
 ):
-    """Crée le tooltip de la couche."""
+    """Construit le tooltip au survol."""
 
-    default_fields = choose_display_fields(gdf)
+    default_fields = choose_display_fields(
+        gdf
+    )
 
     fields = (
         layer.tooltip_fields
@@ -198,7 +246,10 @@ def build_tooltip(
     fields = [
         field
         for field in fields
-        if field in gdf.columns
+        if (
+            field in gdf.columns
+            and not field.startswith("__")
+        )
     ]
 
     if not fields:
@@ -215,19 +266,80 @@ def build_tooltip(
     )
 
 
+def add_selection_to_map(
+    map_object: folium.Map,
+    layer: Layer,
+    gdf: gpd.GeoDataFrame,
+    selection: Selection | None,
+) -> None:
+    """
+    Met en surbrillance l'entité sélectionnée.
+    """
+
+    if selection is None:
+        return
+
+    if selection.layer_name != layer.name:
+        return
+
+    feature_index = (
+        selection.feature_index
+    )
+
+    if feature_index < 0:
+        return
+
+    if feature_index >= len(gdf):
+        return
+
+    selected_gdf = gdf.iloc[
+        [feature_index]
+    ].copy()
+
+    folium.GeoJson(
+        data=selected_gdf.to_json(
+            drop_id=True
+        ),
+        name="Sélection",
+        style_function=lambda feature: {
+            "color": "#DC2626",
+            "weight": 6,
+            "opacity": 1.0,
+            "fillColor": "#FACC15",
+            "fillOpacity": 0.45,
+        },
+        highlight_function=lambda feature: {
+            "color": "#DC2626",
+            "weight": 7,
+            "fillColor": "#FDE047",
+            "fillOpacity": 0.55,
+        },
+        control=False,
+    ).add_to(map_object)
+
+
 def add_layer_to_map(
     map_object: folium.Map,
     layer: Layer,
+    selection: Selection | None = None,
 ) -> list[list[float]] | None:
     """
     Ajoute une couche à la carte.
 
     Retourne l'emprise Leaflet :
-    [[min_lat, min_lon], [max_lat, max_lon]]
+
+    [
+        [min_latitude, min_longitude],
+        [max_latitude, max_longitude],
+    ]
     """
 
     if not layer.visible:
         return None
+
+    # =====================================================
+    # PRÉPARATION DES DONNÉES
+    # =====================================================
 
     gdf = prepare_for_folium(
         layer.geodataframe
@@ -235,6 +347,26 @@ def add_layer_to_map(
 
     if gdf.empty:
         return None
+
+    # Important :
+    # l'index doit être stable pour la sélection.
+    gdf = gdf.reset_index(
+        drop=True
+    )
+
+    # Informations techniques utilisées
+    # pour identifier l'entité cliquée.
+    gdf["__layer_name"] = (
+        layer.name
+    )
+
+    gdf["__feature_index"] = (
+        range(len(gdf))
+    )
+
+    # =====================================================
+    # TYPE DE GÉOMÉTRIE
+    # =====================================================
 
     geometry_types = (
         gdf.geometry
@@ -250,10 +382,18 @@ def add_layer_to_map(
         else ""
     )
 
+    # =====================================================
+    # STYLE
+    # =====================================================
+
     style = build_style(
         layer,
         geometry_type,
     )
+
+    # =====================================================
+    # POPUP / TOOLTIP
+    # =====================================================
 
     popup = build_popup(
         layer,
@@ -264,6 +404,10 @@ def add_layer_to_map(
         layer,
         gdf,
     )
+
+    # =====================================================
+    # GEOJSON
+    # =====================================================
 
     geojson_options = {
         "data": gdf.to_json(
@@ -276,20 +420,41 @@ def add_layer_to_map(
     }
 
     if popup is not None:
-        geojson_options["popup"] = popup
+        geojson_options["popup"] = (
+            popup
+        )
 
     if tooltip is not None:
-        geojson_options["tooltip"] = tooltip
+        geojson_options["tooltip"] = (
+            tooltip
+        )
 
     folium.GeoJson(
         **geojson_options
     ).add_to(map_object)
 
+    # =====================================================
+    # SÉLECTION
+    # =====================================================
+
+    add_selection_to_map(
+        map_object=map_object,
+        layer=layer,
+        gdf=gdf,
+        selection=selection,
+    )
+
+    # =====================================================
+    # EMPRISE
+    # =====================================================
+
     minx, miny, maxx, maxy = (
         gdf.total_bounds
     )
 
-    return [
+    bounds = [
         [miny, minx],
         [maxy, maxx],
     ]
+
+    return bounds
