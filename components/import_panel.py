@@ -7,6 +7,7 @@ from pathlib import Path
 import streamlit as st
 
 from models.layer import Layer
+from services.display.display_service import DisplayService
 from services.data_loader import (
     DataLoaderError,
     load_uploaded_layer,
@@ -119,7 +120,13 @@ def render_import_panel(
                     name=layer_name.strip(),
                     geodataframe=geodataframe,
                     source=uploaded_file.name,
-                )
+                    )
+
+                layer.display_geodataframe = (
+                        DisplayService.simplify(
+                            layer.geodataframe
+                        )
+                    )
 
                 manager.add(layer)
 

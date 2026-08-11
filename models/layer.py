@@ -18,6 +18,8 @@ class Layer:
 
     source: str | Path
 
+    display_geodataframe: gpd.GeoDataFrame | None = None
+
     visible: bool = True
 
     style: dict = field(

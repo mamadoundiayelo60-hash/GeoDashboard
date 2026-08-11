@@ -8,3 +8,4 @@ shapely
 pyproj
 pyarrow
 pytest
+reportlab

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import streamlit as st
 
+from services.export_service import ExportService
 from services.layer_manager import LayerManager
+from services.project_service import ProjectService
 
 
 def render_layer_panel(
@@ -27,6 +29,7 @@ def render_layer_panel(
 
         with action_col:
             if manager.count() > 0:
+
                 if st.button(
                     "Tout supprimer",
                     use_container_width=True,
@@ -34,21 +37,173 @@ def render_layer_panel(
                 ):
                     manager.clear()
 
-                    # Nettoyer aussi la couche sélectionnée
-                    if "selected_layer" in st.session_state:
-                        del st.session_state["selected_layer"]
+                    st.session_state.pop(
+                        "selected_layer",
+                        None,
+                    )
 
                     st.rerun()
+
+        # ==================================================
+        # PROJET
+        # ==================================================
+
+        st.markdown("#### Projet")
+
+        project_col1, project_col2 = st.columns(2)
+
+        # --------------------------------------------------
+        # SAUVEGARDER
+        # --------------------------------------------------
+
+        with project_col1:
+
+            try:
+                project_data = (
+                    ProjectService.save_project(
+                        manager
+                    )
+                )
+
+                st.download_button(
+                    "💾 Sauvegarder le projet",
+                    data=project_data,
+                    file_name="geodashboard_project.gdp",
+                    mime="application/zip",
+                    use_container_width=True,
+                    key="save_geodashboard_project",
+                )
+
+            except Exception as error:
+
+                st.warning(
+                    "Impossible de préparer "
+                    "la sauvegarde du projet."
+                )
+
+                st.caption(
+                    str(error)
+                )
+
+        # --------------------------------------------------
+        # OUVRIR
+        # --------------------------------------------------
+
+        with project_col2:
+
+            project_file = st.file_uploader(
+                "📂 Ouvrir un projet",
+                type=["gdp"],
+                key="open_geodashboard_project",
+                help=(
+                    "Ouvre un projet GeoDashboard "
+                    "précédemment sauvegardé."
+                ),
+            )
+
+        # --------------------------------------------------
+        # CHARGER LE PROJET
+        # --------------------------------------------------
+
+        if project_file is not None:
+
+            # Empêche de recharger le même fichier
+            # à chaque rerun Streamlit.
+            project_signature = (
+                project_file.name,
+                project_file.size,
+            )
+
+            previous_signature = (
+                st.session_state.get(
+                    "loaded_project_signature"
+                )
+            )
+
+            if (
+                project_signature
+                != previous_signature
+            ):
+
+                try:
+
+                    with st.spinner(
+                        "Ouverture du projet..."
+                    ):
+
+                        loaded_manager = (
+                            ProjectService.load_project(
+                                project_file.getvalue()
+                            )
+                        )
+
+                        manager.clear()
+
+                        for layer in (
+                            loaded_manager.list()
+                        ):
+                            manager.add(layer)
+
+                    st.session_state[
+                        "loaded_project_signature"
+                    ] = project_signature
+
+                    # Réinitialiser l'état lié
+                    # à l'ancien projet.
+                    st.session_state.pop(
+                        "selected_layer",
+                        None,
+                    )
+
+                    st.session_state.pop(
+                        "map_bounds",
+                        None,
+                    )
+
+                    st.session_state.pop(
+                        "map_center",
+                        None,
+                    )
+
+                    st.session_state.pop(
+                        "map_zoom",
+                        None,
+                    )
+
+                    st.session_state.pop(
+                        "map_layers_signature",
+                        None,
+                    )
+
+                    st.success(
+                        f"Projet chargé : "
+                        f"{manager.count()} couche(s)."
+                    )
+
+                    st.rerun()
+
+                except Exception as error:
+
+                    st.error(
+                        "Impossible d'ouvrir "
+                        "le projet GeoDashboard."
+                    )
+
+                    st.exception(error)
+
+        st.divider()
 
         # ==================================================
         # AUCUNE COUCHE
         # ==================================================
 
         if manager.count() == 0:
+
             st.info(
                 "Aucune couche chargée. "
                 "Utilise le panneau d'import."
             )
+
             return
 
         # ==================================================
@@ -91,6 +246,7 @@ def render_layer_panel(
                 col1, col2 = st.columns(2)
 
                 with col1:
+
                     st.write(
                         "**Entités :** "
                         f"{summary['Entités']:,}"
@@ -103,17 +259,20 @@ def render_layer_panel(
                     )
 
                 with col2:
+
                     st.write(
-                        f"**CRS :** {summary['CRS']}"
+                        f"**CRS :** "
+                        f"{summary['CRS']}"
                     )
 
                     st.write(
-                        f"**Colonnes :** "
+                        "**Colonnes :** "
                         f"{summary['Colonnes']}"
                     )
 
                 st.caption(
-                    f"Source : {current_layer.source}"
+                    f"Source : "
+                    f"{current_layer.source}"
                 )
 
                 st.divider()
@@ -163,9 +322,8 @@ def render_layer_panel(
                                 f"{current_layer.name}"
                             ),
                             help=(
-                                "Choisis les champs affichés "
-                                "quand l'utilisateur clique "
-                                "sur une entité."
+                                "Choisis les champs "
+                                "affichés lors du clic."
                             ),
                         )
                     )
@@ -173,7 +331,10 @@ def render_layer_panel(
                     default_tooltip = (
                         current_layer.tooltip_fields
                         if current_layer.tooltip_fields
-                        else current_layer.popup_fields[:3]
+                        else (
+                            current_layer
+                            .popup_fields[:3]
+                        )
                     )
 
                     default_tooltip = [
@@ -192,13 +353,14 @@ def render_layer_panel(
                                 f"{current_layer.name}"
                             ),
                             help=(
-                                "Choisis les champs affichés "
-                                "au passage de la souris."
+                                "Choisis les champs "
+                                "affichés au survol."
                             ),
                         )
                     )
 
                 else:
+
                     st.caption(
                         "Cette couche ne contient "
                         "aucun champ attributaire."
@@ -210,14 +372,19 @@ def render_layer_panel(
                 # STYLE
                 # ==========================================
 
-                st.markdown("#### Style")
+                st.markdown(
+                    "#### Style"
+                )
 
                 current_layer.style["color"] = (
                     st.color_picker(
                         "Couleur",
                         value=(
                             current_layer
-                            .style["color"]
+                            .style.get(
+                                "color",
+                                "#2563EB",
+                            )
                         ),
                         key=(
                             f"color_{index}_"
@@ -233,7 +400,10 @@ def render_layer_panel(
                         max_value=10,
                         value=int(
                             current_layer
-                            .style["weight"]
+                            .style.get(
+                                "weight",
+                                3,
+                            )
                         ),
                         key=(
                             f"weight_{index}_"
@@ -249,7 +419,10 @@ def render_layer_panel(
                         max_value=1.0,
                         value=float(
                             current_layer
-                            .style["opacity"]
+                            .style.get(
+                                "opacity",
+                                0.85,
+                            )
                         ),
                         step=0.05,
                         key=(
@@ -259,21 +432,24 @@ def render_layer_panel(
                     )
                 )
 
-                current_layer.style["fillOpacity"] = (
-                    st.slider(
-                        "Remplissage",
-                        min_value=0.0,
-                        max_value=1.0,
-                        value=float(
-                            current_layer
-                            .style["fillOpacity"]
-                        ),
-                        step=0.05,
-                        key=(
-                            f"fill_{index}_"
-                            f"{current_layer.name}"
-                        ),
-                    )
+                current_layer.style[
+                    "fillOpacity"
+                ] = st.slider(
+                    "Remplissage",
+                    min_value=0.0,
+                    max_value=1.0,
+                    value=float(
+                        current_layer
+                        .style.get(
+                            "fillOpacity",
+                            0.20,
+                        )
+                    ),
+                    step=0.05,
+                    key=(
+                        f"fill_{index}_"
+                        f"{current_layer.name}"
+                    ),
                 )
 
                 st.divider()
@@ -290,11 +466,93 @@ def render_layer_panel(
                     ),
                     use_container_width=True,
                 ):
+
                     st.session_state[
                         "selected_layer"
                     ] = current_layer
 
                     st.rerun()
+
+                # ==========================================
+                # EXPORT
+                # ==========================================
+
+                st.markdown(
+                    "#### Exporter la couche"
+                )
+
+                try:
+
+                    gpkg_data = (
+                        ExportService.to_geopackage(
+                            current_layer
+                        )
+                    )
+
+                    geojson_data = (
+                        ExportService.to_geojson(
+                            current_layer
+                        )
+                    )
+
+                    export_col1, export_col2 = (
+                        st.columns(2)
+                    )
+
+                    with export_col1:
+
+                        st.download_button(
+                            "GeoPackage (.gpkg)",
+                            data=gpkg_data,
+                            file_name=(
+                                f"{current_layer.name}"
+                                ".gpkg"
+                            ),
+                            mime=(
+                                "application/"
+                                "geopackage+sqlite3"
+                            ),
+                            key=(
+                                f"download_gpkg_"
+                                f"{index}_"
+                                f"{current_layer.name}"
+                            ),
+                            use_container_width=True,
+                        )
+
+                    with export_col2:
+
+                        st.download_button(
+                            "GeoJSON (.geojson)",
+                            data=geojson_data,
+                            file_name=(
+                                f"{current_layer.name}"
+                                ".geojson"
+                            ),
+                            mime=(
+                                "application/geo+json"
+                            ),
+                            key=(
+                                f"download_geojson_"
+                                f"{index}_"
+                                f"{current_layer.name}"
+                            ),
+                            use_container_width=True,
+                        )
+
+                except Exception as error:
+
+                    st.warning(
+                        "L'export de cette couche "
+                        "n'est pas disponible "
+                        "actuellement."
+                    )
+
+                    st.caption(
+                        str(error)
+                    )
+
+                st.divider()
 
                 # ==========================================
                 # SUPPRESSION
@@ -324,8 +582,9 @@ def render_layer_panel(
                         and selected_layer.name
                         == current_layer.name
                     ):
-                        del st.session_state[
-                            "selected_layer"
-                        ]
+                        st.session_state.pop(
+                            "selected_layer",
+                            None,
+                        )
 
                     st.rerun()

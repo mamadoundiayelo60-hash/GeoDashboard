@@ -202,7 +202,8 @@ def load_vector_file(
         )
 
     geodataframe = geodataframe[
-        geodataframe.geometry.notna()
+    geodataframe.geometry.notna()
+    & ~geodataframe.geometry.is_empty
     ].copy()
 
     if geodataframe.empty:

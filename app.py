@@ -1,17 +1,20 @@
+"""Application principale de GeoDashboard."""
+
 from __future__ import annotations
 
 import streamlit as st
 
+from components.analysis_panel import render_analysis_panel
 from components.attribute_table import render_attribute_table
 from components.header import render_header
 from components.import_panel import render_import_panel
 from components.layer_panel import render_layer_panel
 from components.map_panel import render_map_panel
-from components.selection_panel import render_selection_panel
-from components.stats_panel import render_stats_panel
+from components.results_panel import render_results_panel
 from components.theme import load_theme
 from components.toolbar import render_toolbar
 
+from services.analysis.analysis_service import AnalysisService
 from services.layer_manager import LayerManager
 from services.selection_manager import SelectionManager
 
@@ -29,7 +32,7 @@ st.set_page_config(
 
 
 # =========================================================
-# THÈME
+# THÈME VISUEL
 # =========================================================
 
 st.markdown(
@@ -39,37 +42,58 @@ st.markdown(
 
 
 # =========================================================
-# GESTIONNAIRE DE COUCHES
+# SERVICES CONSERVÉS EN SESSION
 # =========================================================
 
 def get_layer_manager() -> LayerManager:
-    """Retourne le gestionnaire de couches conservé en session."""
+    """Retourne le gestionnaire de couches."""
 
     if "layer_manager" not in st.session_state:
-        st.session_state.layer_manager = LayerManager()
+
+        st.session_state.layer_manager = (
+            LayerManager()
+        )
 
     return st.session_state.layer_manager
 
 
-# =========================================================
-# GESTIONNAIRE DE SÉLECTION
-# =========================================================
-
 def get_selection_manager() -> SelectionManager:
-    """Retourne le gestionnaire de sélection conservé en session."""
+    """Retourne le gestionnaire de sélection."""
 
     if "selection_manager" not in st.session_state:
-        st.session_state.selection_manager = SelectionManager()
+
+        st.session_state.selection_manager = (
+            SelectionManager()
+        )
 
     return st.session_state.selection_manager
 
 
+def get_analysis_service() -> AnalysisService:
+    """Retourne le moteur d'analyse."""
+
+    if "analysis_service" not in st.session_state:
+
+        st.session_state.analysis_service = (
+            AnalysisService()
+        )
+
+    return st.session_state.analysis_service
+
+
 # =========================================================
-# INITIALISATION DES SERVICES
+# INITIALISATION
 # =========================================================
 
 manager = get_layer_manager()
-selection_manager = get_selection_manager()
+
+selection_manager = (
+    get_selection_manager()
+)
+
+analysis_service = (
+    get_analysis_service()
+)
 
 
 # =========================================================
@@ -80,63 +104,89 @@ render_header()
 
 
 # =========================================================
-# BARRE DE PARAMÈTRES
+# TERRITOIRE D'ANALYSE
 # =========================================================
 
-parameters = render_toolbar()
+parameters = render_toolbar(
+    manager
+)
+
+selected_commune = (
+    parameters.get(
+        "commune"
+    )
+)
+
+territory_layer = (
+    parameters.get(
+        "territory_layer"
+    )
+)
 
 
 # =========================================================
 # ZONE PRINCIPALE
 # =========================================================
 
-left_column, right_column = st.columns(
-    [1.05, 2.2],
-    gap="large",
+left_column, right_column = (
+    st.columns(
+        [1.05, 2.2],
+        gap="large",
+    )
 )
 
 
-# ---------------------------------------------------------
+# =========================================================
 # COLONNE GAUCHE
-# ---------------------------------------------------------
+# =========================================================
 
 with left_column:
-    render_import_panel(manager)
-    render_layer_panel(manager)
 
+    render_import_panel(
+        manager
+    )
 
-# ---------------------------------------------------------
-# COLONNE DROITE
-# ---------------------------------------------------------
-
-with right_column:
-    render_map_panel(
-        manager=manager,
-        selection_manager=selection_manager,
-        commune=parameters["commune"],
-        theme=parameters["theme"],
-        distance=parameters["distance"],
+    render_layer_panel(
+        manager
     )
 
 
 # =========================================================
-# PANNEAU DE SÉLECTION
+# COLONNE DROITE
 # =========================================================
 
-render_selection_panel(
-    selection_manager
+with right_column:
+
+    render_map_panel(
+        manager=manager,
+        selection_manager=selection_manager,
+        commune=(
+            selected_commune
+            or "Aucun territoire"
+        ),
+        theme="Analyse spatiale",
+        distance=0,
+    )
+
+
+# =========================================================
+# ANALYSES SPATIALES
+# =========================================================
+
+st.divider()
+
+render_analysis_panel(
+    manager=manager,
+    analysis_service=analysis_service,
 )
 
 
 # =========================================================
-# INDICATEURS
+# RÉSULTATS
 # =========================================================
 
-render_stats_panel(
-    coverage=0.0,
-    buildings=0,
-    facilities=manager.count(),
-    distance=parameters["distance"],
+render_results_panel(
+    manager
 )
 
 
@@ -144,8 +194,10 @@ render_stats_panel(
 # TABLE ATTRIBUTAIRE
 # =========================================================
 
-selected_layer = st.session_state.get(
-    "selected_layer"
+selected_layer = (
+    st.session_state.get(
+        "selected_layer"
+    )
 )
 
 if selected_layer is not None:
@@ -153,26 +205,6 @@ if selected_layer is not None:
     st.divider()
 
     render_attribute_table(
-        selected_layer
+        layer=selected_layer,
+        selection_manager=selection_manager,
     )
-
-
-# =========================================================
-# BOUTON GÉNÉRER
-# =========================================================
-
-if parameters["generate"]:
-
-    if manager.count() == 0:
-
-        st.warning(
-            "Importe au moins une couche "
-            "avant de lancer l'analyse."
-        )
-
-    else:
-
-        st.success(
-            f"{manager.count()} couche(s) prête(s) "
-            "pour l'analyse."
-        )
