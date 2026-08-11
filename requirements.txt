@@ -7,5 +7,8 @@ streamlit-folium
 shapely
 pyproj
 pyarrow
-pytest
+pyogrio
+matplotlib
 reportlab
+pytest
+pyogrio
